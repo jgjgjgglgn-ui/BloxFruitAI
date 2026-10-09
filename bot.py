@@ -1301,12 +1301,12 @@ async def search_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 
     if not query:
         await update.effective_message.reply_text(
-            "🔎 Foydalanish:\n/search Coat"
+            "🔎 Foydalanish:\n/search Meva_nomi_yoki_item"
         )
         return
 
     await update.effective_message.reply_text(
-        f"🔎 Blox Fruits Wiki qidirilmoqda: {query}"
+        f"🔎 {query} haqida ma’lumot qidirilmoqda..."
     )
 
     item = await search_wiki_item(query)
@@ -1320,14 +1320,14 @@ async def search_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     lines = [f"📖 {item.get('title', query)}"]
 
     fields = (
-        ("rarity", "⭐ Rarity"),
-        ("type", "🏷 Type"),
-        ("sea", "🌊 Sea"),
-        ("location", "📍 Location"),
-        ("price", "💰 Price"),
-        ("obtain", "🎯 Obtain"),
-        ("source", "👤 Source"),
-        ("buffs", "⚡ Buffs"),
+        ("rarity", "⭐ Noyobligi"),
+        ("type", "🏷 Turi"),
+        ("sea", "🌊 Dengiz"),
+        ("location", "📍 Joylashuvi"),
+        ("price", "💰 Narxi"),
+        ("obtain", "🎯 Olish usuli"),
+        ("source", "👤 Manba"),
+        ("buffs", "⚡ Xususiyatlari"),
     )
 
     for key, label in fields:
@@ -1339,46 +1339,72 @@ async def search_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         lines.append(f"\n📌 Olish usuli:\n{item['obtainment']}")
 
     if item.get("requirements"):
-        lines.append(f"\n📋 Talablar:\n{item['requirements']}")
+        lines.append(f"\n📋 Kerakli shartlar:\n{item['requirements']}")
 
     info = item.get("overview") or item.get("description")
     if info:
-        lines.append(f"\nℹ️ Qo‘shimcha:\n{info}")
+        lines.append(f"\nℹ️ Qo‘shimcha ma’lumot:\n{info}")
 
     text = "\n".join(lines)
     text = await translate_to_uz(text)
-    text += f"\n\n🔗 Wiki: {item['url']}"
+    text += f"\n\n🔗 Batafsil manba (Wiki): {item['url']}"
 
     await update.effective_message.reply_text(text[:4000])
 
 
 async def stock_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     try:
-        html = await _http_get("https://bloxfruitswiki.org/wiki/stock", timeout=15)
-        start = html.find("<h2>Current Stock</h2>")
-        if start == -1:
-            await update.effective_message.reply_text("❌ Current Stock topilmadi.")
-            return
-        end = html.find("<h2>", start + 5)
-        block = html[start:] if end == -1 else html[start:end]
-        pattern = re.compile(r'<a[^>]+title=\"([^\"]+)\"[^>]*>.*?</a>.*?<a[^>]*>([^<]+)</a>.*?<span[^>]*>([^<]+)</span>.*?__money\.webp.*?</span>\s*([\d,]+).*?__robux\.webp.*?</span>\s*([\d,]+)', re.S | re.I)
-        entries = []
-        for m in pattern.finditer(block):
-            name = unescape(m.group(1)).strip()
-            display = unescape(m.group(2)).strip()
-            if name.lower() == display.lower():
-                entries.append((display, unescape(m.group(3)).strip(), m.group(4), m.group(5)))
-        if not entries:
-            await update.effective_message.reply_text("❌ Hozirgi stockni o‘qib bo‘lmadi.")
-            return
-        reset = re.search(r'\((\d{4}-\d{2}-\d{2} \d{2}:\d{2} UTC)\)', block)
-        lines = ["🛒 Blox Fruits — Current Stock", f"🔄 Reset: {reset.group(1) if reset else 'Noma’lum'}", ""]
-        for name, rarity, money, robux in entries:
-            lines.append(f"🍎 {name}\n   {rarity}\n   💰 {money} Beli | 💎 {robux} Robux")
+        page = await _http_get("https://bloxfruitswiki.org/wiki/stock", timeout=20)
+        lines = ["🛒 BLOX FRUITS — IKKALA STOCK"]
+        for title in ("Current Stock", "Current Mirage Stock"):
+            heading = re.search(
+                r"<h[1-3]\b[^>]*>\s*" + re.escape(title) + r"\s*</h[1-3]>",
+                page, re.I
+            )
+            if not heading:
+                lines.extend(["", f"❌ {title}: topilmadi"])
+                continue
+
+            rest = page[heading.end():]
+            nxt = re.search(r"<h[1-3]\b[^>]*>", rest, re.I)
+            block = rest[:nxt.start()] if nxt else rest
+            reset = re.search(r"\((\d{4}-\d{2}-\d{2} \d{2}:\d{2} UTC)\)", block)
+            lines.extend(["", f"📦 {title}", f"🔄 Reset: {reset.group(1) if reset else 'Noma’lum'}"])
+
+            cards = re.findall(
+                r'<div style="display:flex;flex-direction:column;align-items:center;width:118px;.*?</div>',
+                block, re.I | re.S
+            )
+            count = 0
+            for card in cards:
+                name_match = re.search(r'<a\b[^>]*\btitle="([^"]+)"', card, re.I)
+                anchors = re.findall(r"<a\b[^>]*>(.*?)</a>", card, re.I | re.S)
+                if not name_match or len(anchors) < 2:
+                    continue
+                name = unescape(name_match.group(1)).strip()
+                display = re.sub(r"<[^>]+>", "", anchors[1])
+                display = unescape(display).strip()
+                rarity_match = re.search(r"<span[^>]*>(.*?)</span>", card, re.I | re.S)
+                rarity = unescape(re.sub(r"<[^>]+>", "", rarity_match.group(1))).strip() if rarity_match else "Noma’lum"
+                money_match = re.search(r'__money\.webp[^>]*>\s*([\d,]+)', card, re.I | re.S)
+                robux_match = re.search(r'__robux\.webp[^>]*>\s*([\d,]+)', card, re.I | re.S)
+                lines.append(
+                    f"🍎 {name if name else display}\n"
+                    f"   {rarity}\n"
+                    f"   💰 {money_match.group(1) if money_match else '?'} Beli"
+                    f" | 💎 {robux_match.group(1) if robux_match else '?'} Robux"
+                )
+                count += 1
+            if count == 0:
+                lines.append("❌ Mevalarni o‘qib bo‘lmadi.")
+
         await update.effective_message.reply_text("\n".join(lines)[:4000])
     except Exception as e:
         logging.exception("Stock error")
-        await update.effective_message.reply_text(f"❌ Stockni olishda xatolik: {type(e).__name__}")
+        await update.effective_message.reply_text(
+            f"❌ Stockni olishda xatolik: {type(e).__name__}"
+        )
+
 
 async def cancel_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     user_sessions.pop(update.effective_user.id, None)
